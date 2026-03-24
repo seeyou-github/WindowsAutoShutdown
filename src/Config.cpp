@@ -15,15 +15,6 @@ int ReadInt(const std::wstring& path, const wchar_t* section, const wchar_t* key
     return GetPrivateProfileIntW(section, key, defValue, path.c_str());
 }
 
-unsigned long long ReadULL(const std::wstring& path, const wchar_t* section, const wchar_t* key, unsigned long long defValue) {
-    wchar_t buffer[64] = {};
-    GetPrivateProfileStringW(section, key, L"0", buffer, 64, path.c_str());
-    if (buffer[0] == L'\0') {
-        return defValue;
-    }
-    return _wcstoui64(buffer, nullptr, 10);
-}
-
 void WriteBool(const std::wstring& path, const wchar_t* section, const wchar_t* key, bool value) {
     WritePrivateProfileStringW(section, key, value ? L"1" : L"0", path.c_str());
 }
@@ -32,11 +23,6 @@ void WriteInt(const std::wstring& path, const wchar_t* section, const wchar_t* k
     wchar_t buf[32] = {};
     wsprintfW(buf, L"%d", value);
     WritePrivateProfileStringW(section, key, buf, path.c_str());
-}
-
-void WriteULL(const std::wstring& path, const wchar_t* section, const wchar_t* key, unsigned long long value) {
-    const std::wstring text = std::to_wstring(value);
-    WritePrivateProfileStringW(section, key, text.c_str(), path.c_str());
 }
 
 void WriteDescription(const std::wstring& path, const wchar_t* key, UINT stringId) {
@@ -57,22 +43,6 @@ bool ConfigManager::Load(const std::wstring& iniPath, AppConfig& outConfig) {
         outConfig.addMinutes[static_cast<size_t>(i)] = v;
     }
 
-    outConfig.monitorEnabled = ReadBool(iniPath, L"Monitor", L"Enabled", false);
-    outConfig.sizeRuleEnabled = ReadBool(iniPath, L"Monitor", L"SizeRuleEnabled", false);
-    outConfig.sizeThresholdMb = ReadULL(iniPath, L"Monitor", L"SizeThresholdMb", 1024);
-    outConfig.stallRuleEnabled = ReadBool(iniPath, L"Monitor", L"StallRuleEnabled", false);
-    outConfig.stallMinutes = ReadInt(iniPath, L"Monitor", L"StallMinutes", 10);
-    outConfig.monitorLogIntervalSeconds = ReadInt(iniPath, L"Monitor", L"LogIntervalSeconds", 10);
-
-    wchar_t pathBuf[MAX_PATH] = {};
-    GetPrivateProfileStringW(L"Monitor", L"Path", L"", pathBuf, MAX_PATH, iniPath.c_str());
-    outConfig.monitorPath = pathBuf;
-
-    if (outConfig.stallMinutes < 1) outConfig.stallMinutes = 10;
-    if (outConfig.sizeThresholdMb < 1) outConfig.sizeThresholdMb = 1024;
-    if (outConfig.monitorLogIntervalSeconds < 1) outConfig.monitorLogIntervalSeconds = 10;
-    if (outConfig.monitorLogIntervalSeconds > 3600) outConfig.monitorLogIntervalSeconds = 3600;
-
     return true;
 }
 
@@ -83,14 +53,6 @@ bool ConfigManager::Save(const std::wstring& iniPath, const AppConfig& config) {
         wsprintfW(key, L"AddBtn%dMin", i + 1);
         WriteInt(iniPath, L"Timer", key, config.addMinutes[static_cast<size_t>(i)]);
     }
-
-    WriteBool(iniPath, L"Monitor", L"Enabled", config.monitorEnabled);
-    WriteBool(iniPath, L"Monitor", L"SizeRuleEnabled", config.sizeRuleEnabled);
-    WriteULL(iniPath, L"Monitor", L"SizeThresholdMb", config.sizeThresholdMb);
-    WriteBool(iniPath, L"Monitor", L"StallRuleEnabled", config.stallRuleEnabled);
-    WriteInt(iniPath, L"Monitor", L"StallMinutes", config.stallMinutes);
-    WriteInt(iniPath, L"Monitor", L"LogIntervalSeconds", config.monitorLogIntervalSeconds);
-    WritePrivateProfileStringW(L"Monitor", L"Path", config.monitorPath.c_str(), iniPath.c_str());
 
     const std::array<UINT, 8> addButtonDescriptionIds = {
         IDS_INI_DESC_ADD_BTN1,
@@ -109,12 +71,5 @@ bool ConfigManager::Save(const std::wstring& iniPath, const AppConfig& config) {
         wsprintfW(key, L"AddBtn%dMin", i + 1);
         WriteDescription(iniPath, key, addButtonDescriptionIds[static_cast<size_t>(i)]);
     }
-    WriteDescription(iniPath, L"Monitor.Enabled", IDS_INI_DESC_MONITOR_ENABLED);
-    WriteDescription(iniPath, L"Monitor.Path", IDS_INI_DESC_MONITOR_PATH);
-    WriteDescription(iniPath, L"SizeRuleEnabled", IDS_INI_DESC_SIZE_RULE);
-    WriteDescription(iniPath, L"SizeThresholdMb", IDS_INI_DESC_SIZE_THRESHOLD);
-    WriteDescription(iniPath, L"StallRuleEnabled", IDS_INI_DESC_STALL_RULE);
-    WriteDescription(iniPath, L"StallMinutes", IDS_INI_DESC_STALL_MINUTES);
-    WriteDescription(iniPath, L"LogIntervalSeconds", IDS_INI_DESC_LOG_INTERVAL);
     return true;
 }
