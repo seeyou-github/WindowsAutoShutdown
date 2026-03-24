@@ -1,6 +1,5 @@
 ﻿@echo off
 setlocal
-
 echo ===== Build WindowsAutoShutdown =====
 
 if not exist build mkdir build
@@ -35,8 +34,11 @@ echo Linking...
 %CXX% build\main.o build\MainWindow.o build\Config.o build\ShutdownScheduler.o build\FolderMonitor.o build\ReminderWindow.o build\resource.o -o build\WindowsAutoShutdown.exe %LDFLAGS%
 if errorlevel 1 goto error
 
+powershell -NoProfile -Command "$name = ([string][char]0x81EA) + [char]0x52A8 + [char]0x5173 + [char]0x673A + '.exe'; Copy-Item -Force 'build\\WindowsAutoShutdown.exe' (Join-Path 'build' $name)"
+if errorlevel 1 goto error
+
 echo ===== Build succeeded =====
-echo Output: build\WindowsAutoShutdown.exe
+echo Output: build\WindowsAutoShutdown.exe and localized copy
 goto end
 
 :error

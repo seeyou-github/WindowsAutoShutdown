@@ -13,6 +13,7 @@
 namespace {
 constexpr wchar_t kMainWndClass[] = L"WinAutoShutdown_MainWnd";
 constexpr wchar_t kSettingsWndClass[] = L"WinAutoShutdown_SettingsWnd";
+constexpr wchar_t kMainWindowTitle[] = L"自动关机";
 constexpr UINT kTrayCallbackMessage = WM_APP + 11;
 constexpr UINT_PTR kMainTimerId = 1;
 
@@ -162,11 +163,12 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
     RegisterClassExW(&wc);
 
     hwnd_ = CreateWindowExW(
-        0, kMainWndClass, LoadAppString(IDS_APP_TITLE).c_str(),
+        0, kMainWndClass, kMainWindowTitle,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 760, 470,
         nullptr, nullptr, hInstance_, this);
     if (!hwnd_) return false;
+    SetWindowTextW(hwnd_, kMainWindowTitle);
 
     HICON hMainIconBig = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
     HICON hMainIconSmall = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));

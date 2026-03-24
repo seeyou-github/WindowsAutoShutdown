@@ -7,7 +7,7 @@ IDI_APP_ICON ICON "icon.ico"
 
 STRINGTABLE
 BEGIN
-    IDS_APP_TITLE "Windows Auto Shutdown"
+    IDS_APP_TITLE "自动关机"
     IDS_SETTINGS_TITLE "配置中心"
     IDS_MAIN_TIME_TITLE "关机时间"
     IDS_SETTINGS_BUTTON "配置中心"
