@@ -41,7 +41,7 @@ bool ReminderWindow::Create(HINSTANCE hInstance, HWND parent) {
         LoadAppString(IDS_REMINDER_WINDOW_TITLE).c_str(),
         WS_POPUP,
         CW_USEDEFAULT, CW_USEDEFAULT, kCardWidth, kCardHeight,
-        parent, nullptr, hInstance, this);
+        nullptr, nullptr, hInstance, this);
 
     if (!hwnd_) return false;
 
