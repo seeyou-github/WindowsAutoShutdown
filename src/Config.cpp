@@ -7,6 +7,19 @@
 #include <windows.h>
 
 namespace {
+std::wstring ReadString(const std::wstring& path, const wchar_t* section, const wchar_t* key) {
+    wchar_t buffer[512] = {};
+    GetPrivateProfileStringW(section, key, L"", buffer, static_cast<DWORD>(std::size(buffer)), path.c_str());
+    return buffer;
+}
+
+bool WriteStringIfChanged(const std::wstring& path, const wchar_t* section, const wchar_t* key, const std::wstring& value) {
+    if (ReadString(path, section, key) == value) {
+        return true;
+    }
+    return WritePrivateProfileStringW(section, key, value.c_str(), path.c_str()) != FALSE;
+}
+
 bool ReadBool(const std::wstring& path, const wchar_t* section, const wchar_t* key, bool defValue) {
     return GetPrivateProfileIntW(section, key, defValue ? 1 : 0, path.c_str()) != 0;
 }
@@ -16,19 +29,19 @@ int ReadInt(const std::wstring& path, const wchar_t* section, const wchar_t* key
 }
 
 void WriteBool(const std::wstring& path, const wchar_t* section, const wchar_t* key, bool value) {
-    WritePrivateProfileStringW(section, key, value ? L"1" : L"0", path.c_str());
+    WriteStringIfChanged(path, section, key, value ? L"1" : L"0");
 }
 
 void WriteInt(const std::wstring& path, const wchar_t* section, const wchar_t* key, int value) {
     wchar_t buf[32] = {};
     wsprintfW(buf, L"%d", value);
-    WritePrivateProfileStringW(section, key, buf, path.c_str());
+    WriteStringIfChanged(path, section, key, buf);
 }
 
 void WriteDescription(const std::wstring& path, const wchar_t* key, UINT stringId) {
     const std::wstring section = LoadAppString(IDS_INI_SECTION_DESCRIPTION);
     const std::wstring value = LoadAppString(stringId);
-    WritePrivateProfileStringW(section.c_str(), key, value.c_str(), path.c_str());
+    WriteStringIfChanged(path, section.c_str(), key, value);
 }
 } 
 
