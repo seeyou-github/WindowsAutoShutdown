@@ -23,6 +23,7 @@ struct MonitorTickResult {
     MonitorTriggerType triggerType = MonitorTriggerType::none;
     std::wstring reason;
     unsigned long long currentSizeBytes = 0;
+    int stableSeconds = 0;
 };
 
 class FolderMonitor {

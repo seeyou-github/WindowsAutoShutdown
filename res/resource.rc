@@ -3,6 +3,7 @@
 #include "resource.h"
 
 1 RT_MANIFEST "app.manifest"
+IDI_APP_ICON ICON "icon.ico"
 
 STRINGTABLE
 BEGIN
@@ -11,7 +12,8 @@ BEGIN
     IDS_MAIN_TIME_TITLE "关机时间"
     IDS_SETTINGS_BUTTON "配置中心"
     IDS_START_SHUTDOWN "开始关机"
-    IDS_CANCEL_SHUTDOWN "取消关机"
+    IDS_START_SLEEP "开始休眠"
+    IDS_CANCEL_SHUTDOWN "取消"
     IDS_SYSTEM_SETTINGS "系统设置"
     IDS_PREVENT_SLEEP "倒计时期间阻止系统休眠"
     IDS_FOLDER_MONITOR "文件夹监控"
@@ -53,7 +55,7 @@ BEGIN
     IDS_MONITOR_REASON_TIME_REACHED "时间到达"
     IDS_MONITOR_REASON_TRIGGERED "已触发"
     IDS_MONITOR_DISABLED "未开启"
-    IDS_MONITOR_LOG_FORMAT "%ls | 文件夹大小：%ls | 触发关机大小：%ls | 大小不变触发时间：%ls | 是否触发关机=%ls | 原因=%ls | 监控文件夹=%ls\n"
+    IDS_MONITOR_LOG_FORMAT "%ls | 文件夹大小：%ls (触发关机大小：%ls) | 大小不变持续时间：%ls (触发关机时间：%ls ) | 是否触发关机=%ls | 原因=%ls | 监控文件夹=%ls\n"
     IDS_STALL_HOURS_FORMAT "%d 小时"
     IDS_STALL_MINUTES_FORMAT "%d 分钟"
     IDS_ADD_BUTTON_MINUTES_FORMAT "+%d分钟"

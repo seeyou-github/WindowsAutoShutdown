@@ -15,6 +15,11 @@ public:
     int MessageLoop();
 
 private:
+    enum class PendingAction {
+        Shutdown,
+        Sleep
+    };
+
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -38,6 +43,7 @@ private:
 
     void AddManualSeconds(int seconds);
     void StartManualSchedule();
+    void StartManualSleepSchedule();
     void StartMonitorSchedule(const std::wstring& reason);
     void CancelSchedule();
     void ExecuteShutdownNow();
@@ -66,6 +72,7 @@ private:
     HWND hTimeLargeLabel_ = nullptr;
     HWND hAddBtns_[8] = {};
     HWND hStartBtn_ = nullptr;
+    HWND hStartSleepBtn_ = nullptr;
     HWND hCancelBtn_ = nullptr;
     HWND hSettingsBtn_ = nullptr;
 
@@ -91,6 +98,7 @@ private:
 
     AppConfig config_{};
     int manualTotalSeconds_ = 0;
+    PendingAction pendingAction_ = PendingAction::Shutdown;
     ShutdownScheduler scheduler_{};
     FolderMonitor monitor_{};
     ReminderWindow reminder_;

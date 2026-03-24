@@ -43,6 +43,14 @@ MonitorTickResult FolderMonitor::Tick() {
         lastChangeAt_ = now;
     }
 
+    if (hasLastSample_) {
+        result.stableSeconds = static_cast<int>(
+            std::chrono::duration_cast<std::chrono::seconds>(now - lastChangeAt_).count());
+        if (result.stableSeconds < 0) {
+            result.stableSeconds = 0;
+        }
+    }
+
     if (settings_.sizeRuleEnabled && settings_.sizeThresholdBytes > 0 &&
         result.currentSizeBytes >= settings_.sizeThresholdBytes) {
         result.triggered = true;
@@ -52,9 +60,7 @@ MonitorTickResult FolderMonitor::Tick() {
     }
 
     if (settings_.stallRuleEnabled && settings_.stallSeconds > 0 && hasLastSample_) {
-        const auto stableSeconds =
-            std::chrono::duration_cast<std::chrono::seconds>(now - lastChangeAt_).count();
-        if (stableSeconds >= settings_.stallSeconds) {
+        if (result.stableSeconds >= settings_.stallSeconds) {
             result.triggered = true;
             result.triggerType = MonitorTriggerType::stall_timeout;
             result.reason = LoadAppString(IDS_MONITOR_STALL_TRIGGER_REASON);

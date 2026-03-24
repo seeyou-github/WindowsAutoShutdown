@@ -20,6 +20,11 @@ constexpr UINT_PTR kMainTimerId = 1;
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+HICON LoadAppIcon(HINSTANCE hInstance, int cx, int cy) {
+    return reinterpret_cast<HICON>(
+        LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR));
+}
+
 enum ControlId {
     IDC_KEY_TIME_TITLE = 1001,
     IDC_LARGE_TIME = 1002,
@@ -34,6 +39,7 @@ enum ControlId {
     IDC_START = 1201,
     IDC_CANCEL = 1202,
     IDC_OPEN_SETTINGS = 1203,
+    IDC_START_SLEEP = 1204,
     IDC_PREVENT_SLEEP = 1301,
     IDC_MONITOR_ENABLE = 1303,
     IDC_MONITOR_PATH = 1304,
@@ -113,6 +119,15 @@ std::wstring FormatLocalTimeNow() {
     return buf;
 }
 
+std::wstring FormatMmSs(int sec) {
+    if (sec < 0) sec = 0;
+    const int m = sec / 60;
+    const int s = sec % 60;
+    wchar_t buf[32] = {};
+    swprintf(buf, std::size(buf), L"%02d:%02d 秒", m, s);
+    return buf;
+}
+
 unsigned long long ParsePositiveULL(HWND edit, unsigned long long fallback) {
     wchar_t buf[64] = {};
     GetWindowTextW(edit, buf, 64);
@@ -141,7 +156,8 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
     wc.lpfnWndProc = MainWindow::WndProc;
     wc.hInstance = hInstance_;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    wc.hIconSm = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
     wc.lpszClassName = kMainWndClass;
     RegisterClassExW(&wc);
 
@@ -151,6 +167,11 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
         CW_USEDEFAULT, CW_USEDEFAULT, 760, 470,
         nullptr, nullptr, hInstance_, this);
     if (!hwnd_) return false;
+
+    HICON hMainIconBig = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    HICON hMainIconSmall = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hMainIconBig));
+    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hMainIconSmall));
 
     RECT rc = {};
     GetWindowRect(hwnd_, &rc);
@@ -225,11 +246,13 @@ void MainWindow::CreateMainControls() {
     }
 
     hStartBtn_ = CreateWindowExW(0, L"BUTTON", LoadAppString(IDS_START_SHUTDOWN).c_str(), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-                                 280, 342, 100, 40, hwnd_, reinterpret_cast<HMENU>(IDC_START), hInstance_, nullptr);
+                                 200, 342, 110, 40, hwnd_, reinterpret_cast<HMENU>(IDC_START), hInstance_, nullptr);
+    hStartSleepBtn_ = CreateWindowExW(0, L"BUTTON", LoadAppString(IDS_START_SLEEP).c_str(), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                                      324, 342, 110, 40, hwnd_, reinterpret_cast<HMENU>(IDC_START_SLEEP), hInstance_, nullptr);
     hCancelBtn_ = CreateWindowExW(0, L"BUTTON", LoadAppString(IDS_CANCEL_SHUTDOWN).c_str(), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-                                  392, 342, 100, 40, hwnd_, reinterpret_cast<HMENU>(IDC_CANCEL), hInstance_, nullptr);
+                                  448, 342, 110, 40, hwnd_, reinterpret_cast<HMENU>(IDC_CANCEL), hInstance_, nullptr);
 
-    HWND controls[] = {hSettingsBtn_, hKeyTimeTitle_, hTimeLargeLabel_, hStartBtn_, hCancelBtn_};
+    HWND controls[] = {hSettingsBtn_, hKeyTimeTitle_, hTimeLargeLabel_, hStartBtn_, hStartSleepBtn_, hCancelBtn_};
     for (HWND ctrl : controls) {
         SendMessageW(ctrl, WM_SETFONT, reinterpret_cast<WPARAM>(fontNormal_), TRUE);
     }
@@ -242,7 +265,8 @@ void MainWindow::CreateSettingsWindow() {
     wc.lpfnWndProc = MainWindow::SettingsWndProc;
     wc.hInstance = hInstance_;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    wc.hIconSm = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
     wc.lpszClassName = kSettingsWndClass;
     RegisterClassExW(&wc);
 
@@ -253,6 +277,10 @@ void MainWindow::CreateSettingsWindow() {
         hwnd_, nullptr, hInstance_, this);
 
     if (settingsWnd_) {
+        HICON hSettingsIconBig = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+        HICON hSettingsIconSmall = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+        SendMessageW(settingsWnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hSettingsIconBig));
+        SendMessageW(settingsWnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hSettingsIconSmall));
         CreateSettingsControls(settingsWnd_);
         EnableDarkTitleBar(settingsWnd_);
         ApplyTheme(settingsWnd_);
@@ -329,9 +357,20 @@ void MainWindow::DrawButton(DRAWITEMSTRUCT* dis) {
     if (!dis) return;
 
     const bool selected = (dis->itemState & ODS_SELECTED) != 0;
-    const COLORREF bg = selected ? RGB(92, 102, 114) : RGB(106, 118, 132);
-    const COLORREF border = RGB(132, 146, 162);
-    const COLORREF text = RGB(210, 216, 224);
+    COLORREF bg = selected ? RGB(92, 102, 114) : RGB(106, 118, 132);
+    COLORREF border = RGB(132, 146, 162);
+    COLORREF text = RGB(210, 216, 224);
+    const int ctrlId = GetDlgCtrlID(dis->hwndItem);
+
+    if (ctrlId == IDC_START) {
+        bg = selected ? RGB(168, 46, 46) : RGB(196, 58, 58);
+        border = RGB(224, 112, 112);
+        text = RGB(255, 242, 242);
+    } else if (ctrlId == IDC_START_SLEEP) {
+        bg = selected ? RGB(214, 180, 56) : RGB(236, 200, 68);
+        border = RGB(247, 222, 133);
+        text = RGB(52, 44, 18);
+    }
 
     HBRUSH brush = CreateSolidBrush(bg);
     FillRect(dis->hDC, &dis->rcItem, brush);
@@ -355,6 +394,7 @@ void MainWindow::DrawButton(DRAWITEMSTRUCT* dis) {
 void MainWindow::LoadConfig() {
     ConfigManager::Load(GetIniPath(), config_);
     manualTotalSeconds_ = 0;
+    pendingAction_ = PendingAction::Shutdown;
     ApplyConfigToSettingsUI();
     RefreshMonitorSettings();
     RefreshAddButtonsText();
@@ -468,6 +508,7 @@ void MainWindow::StartManualSchedule() {
         return;
     }
 
+    pendingAction_ = PendingAction::Shutdown;
     scheduler_.Start(manualTotalSeconds_, LoadAppString(IDS_MANUAL_SHUTDOWN_REASON));
     monitorTriggerSuppressed_ = false;
     monitorLogStopped_ = false;
@@ -478,8 +519,31 @@ void MainWindow::StartManualSchedule() {
         SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
     }
 }
+
+void MainWindow::StartManualSleepSchedule() {
+    if (scheduler_.IsRunning()) {
+        return;
+    }
+    if (manualTotalSeconds_ <= 0) {
+        MessageBoxW(hwnd_, LoadAppString(IDS_SET_DURATION_FIRST).c_str(), LoadAppString(IDS_PROMPT).c_str(), MB_ICONINFORMATION);
+        return;
+    }
+
+    pendingAction_ = PendingAction::Sleep;
+    scheduler_.Start(manualTotalSeconds_, LoadAppString(IDS_START_SLEEP));
+    monitorTriggerSuppressed_ = false;
+    monitorLogStopped_ = false;
+    lastMonitorLogAt_ = {};
+    UpdateMainTimeText();
+
+    if (config_.preventSleep) {
+        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+    }
+}
+
 void MainWindow::StartMonitorSchedule(const std::wstring& reason) {
     const int currentRemaining = scheduler_.IsRunning() ? scheduler_.GetRemainingSeconds() : 0;
+    pendingAction_ = PendingAction::Shutdown;
     if (currentRemaining <= 0 || currentRemaining > 3 * 60) {
         scheduler_.Start(3 * 60, reason);
         manualTotalSeconds_ = 3 * 60;
@@ -501,6 +565,7 @@ void MainWindow::CancelSchedule() {
     RunShutdownCommand(L"/a");
     SetThreadExecutionState(ES_CONTINUOUS);
     manualTotalSeconds_ = 0;
+    pendingAction_ = PendingAction::Shutdown;
     monitorTriggerSuppressed_ = true;
     monitorLogStopped_ = true;
     UpdateMainTimeText();
@@ -508,8 +573,13 @@ void MainWindow::CancelSchedule() {
 
 void MainWindow::ExecuteShutdownNow() {
     reminder_.Hide();
-    RunShutdownCommand(L"/s /t 0");
+    if (pendingAction_ == PendingAction::Sleep) {
+        RunShutdownCommand(L"/h");
+    } else {
+        RunShutdownCommand(L"/s /t 0");
+    }
     scheduler_.Cancel();
+    pendingAction_ = PendingAction::Shutdown;
 }
 
 void MainWindow::UpdateMainTimeText() {
@@ -524,7 +594,7 @@ void MainWindow::InitTrayIcon() {
     trayData_.uID = 1;
     trayData_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     trayData_.uCallbackMessage = kTrayCallbackMessage;
-    trayData_.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    trayData_.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
     lstrcpynW(trayData_.szTip, LoadAppString(IDS_APP_TITLE).c_str(), ARRAYSIZE(trayData_.szTip));
     Shell_NotifyIconW(NIM_ADD, &trayData_);
 }
@@ -605,9 +675,6 @@ void MainWindow::HandleMonitorTick() {
 
     auto result = monitor_.Tick();
     lastMonitorResult_ = result;
-    if (result.triggered) {
-        monitorLogStopped_ = true;
-    }
     if (!result.triggered) {
         monitorTriggerSuppressed_ = false;
         if (config_.monitorEnabled) {
@@ -615,7 +682,14 @@ void MainWindow::HandleMonitorTick() {
         }
     }
     if (result.triggered && !monitorTriggerSuppressed_) {
+        if (!config_.monitorPath.empty()) {
+            WriteMonitorLog();
+            lastMonitorLogAt_ = std::chrono::steady_clock::now();
+        }
         StartMonitorSchedule(result.reason);
+        monitorLogStopped_ = true;
+    } else if (result.triggered) {
+        monitorLogStopped_ = true;
     }
 }
 
@@ -669,28 +743,32 @@ void MainWindow::WriteMonitorLog() const {
         break;
     }
 
-    wchar_t stallText[64] = {};
+    std::wstring thresholdText = config_.sizeRuleEnabled
+        ? FormatBytes(config_.sizeThresholdMb * 1024ULL * 1024ULL)
+        : LoadAppString(IDS_MONITOR_DISABLED);
+
+    std::wstring stallTriggerText = LoadAppString(IDS_MONITOR_DISABLED);
     if (config_.stallRuleEnabled) {
         if (config_.stallMinutes >= 60 && config_.stallMinutes % 60 == 0) {
-            swprintf(stallText, std::size(stallText), LoadAppString(IDS_STALL_HOURS_FORMAT).c_str(), config_.stallMinutes / 60);
+            wchar_t buf[64] = {};
+            swprintf(buf, std::size(buf), LoadAppString(IDS_STALL_HOURS_FORMAT).c_str(), config_.stallMinutes / 60);
+            stallTriggerText = buf;
         } else {
-            swprintf(stallText, std::size(stallText), LoadAppString(IDS_STALL_MINUTES_FORMAT).c_str(), config_.stallMinutes);
+            wchar_t buf[64] = {};
+            swprintf(buf, std::size(buf), LoadAppString(IDS_STALL_MINUTES_FORMAT).c_str(), config_.stallMinutes);
+            stallTriggerText = buf;
         }
-    } else {
-        swprintf(stallText, std::size(stallText), L"%ls", LoadAppString(IDS_MONITOR_DISABLED).c_str());
     }
 
-    std::wstring thresholdText = LoadAppString(IDS_MONITOR_DISABLED);
-    if (config_.sizeRuleEnabled) {
-        thresholdText = FormatBytes(config_.sizeThresholdMb * 1024ULL * 1024ULL);
-    }
+    const std::wstring stableDurationText = FormatMmSs(lastMonitorResult_.stableSeconds);
 
     const std::wstring format = LoadAppString(IDS_MONITOR_LOG_FORMAT);
     fwprintf(file, format.c_str(),
              FormatLocalTimeNow().c_str(),
              sizeText.c_str(),
              thresholdText.c_str(),
-             stallText,
+             stableDurationText.c_str(),
+             stallTriggerText.c_str(),
              triggered.c_str(),
              reason.c_str(),
              config_.monitorPath.c_str());
@@ -768,6 +846,7 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
             if (id == IDC_START) { StartManualSchedule(); return 0; }
+            if (id == IDC_START_SLEEP) { StartManualSleepSchedule(); return 0; }
             if (id == IDC_CANCEL) { CancelSchedule(); return 0; }
             if (id == IDC_OPEN_SETTINGS) { ShowSettingsWindow(); return 0; }
         }
