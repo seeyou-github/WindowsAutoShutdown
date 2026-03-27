@@ -6,69 +6,117 @@
 #include <filesystem>
 #include <system_error>
 
-void FolderMonitor::UpdateSettings(const MonitorSettings& settings) {
-    const bool pathChanged = settings_.path != settings.path;
-    settings_ = settings;
-    if (pathChanged) {
-        ResetState();
+FolderMonitor::FolderMonitor() : worker_(&FolderMonitor::WorkerLoop, this) {}
+
+FolderMonitor::~FolderMonitor() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopWorker_ = true;
+        settingsDirty_ = true;
     }
+    cv_.notify_one();
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+}
+
+void FolderMonitor::UpdateSettings(const MonitorSettings& settings) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const bool pathChanged = settings_.path != settings.path;
+        settings_ = settings;
+        if (pathChanged) {
+            hasLastSample_ = false;
+            lastSizeBytes_ = 0;
+            lastChangeAt_ = {};
+            latestResult_ = {};
+        }
+        settingsDirty_ = true;
+    }
+    cv_.notify_one();
 }
 
 void FolderMonitor::ResetState() {
+    std::lock_guard<std::mutex> lock(mutex_);
     hasLastSample_ = false;
     lastSizeBytes_ = 0;
     lastChangeAt_ = {};
+    latestResult_ = {};
 }
 
 MonitorTickResult FolderMonitor::Tick() {
-    MonitorTickResult result;
-    if (!settings_.enabled || settings_.path.empty()) {
-        return result;
-    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    return latestResult_;
+}
 
-    std::error_code ec;
-    if (!std::filesystem::exists(settings_.path, ec) || !std::filesystem::is_directory(settings_.path, ec)) {
-        return result;
-    }
-
-    result.currentSizeBytes = CalculateFolderSize(settings_.path);
-
-    const auto now = std::chrono::steady_clock::now();
-    if (!hasLastSample_) {
-        hasLastSample_ = true;
-        lastSizeBytes_ = result.currentSizeBytes;
-        lastChangeAt_ = now;
-    } else if (result.currentSizeBytes != lastSizeBytes_) {
-        lastSizeBytes_ = result.currentSizeBytes;
-        lastChangeAt_ = now;
-    }
-
-    if (hasLastSample_) {
-        result.stableSeconds = static_cast<int>(
-            std::chrono::duration_cast<std::chrono::seconds>(now - lastChangeAt_).count());
-        if (result.stableSeconds < 0) {
-            result.stableSeconds = 0;
+void FolderMonitor::WorkerLoop() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (!stopWorker_) {
+        cv_.wait_for(lock, std::chrono::seconds(5), [this]() {
+            return stopWorker_ || settingsDirty_;
+        });
+        if (stopWorker_) {
+            break;
         }
-    }
 
-    if (settings_.sizeRuleEnabled && settings_.sizeThresholdBytes > 0 &&
-        result.currentSizeBytes >= settings_.sizeThresholdBytes) {
-        result.triggered = true;
-        result.triggerType = MonitorTriggerType::size_threshold;
-        result.reason = LoadAppString(IDS_MONITOR_SIZE_TRIGGER_REASON);
-        return result;
-    }
+        settingsDirty_ = false;
+        const MonitorSettings settings = settings_;
+        const bool hasLastSample = hasLastSample_;
+        const unsigned long long lastSizeBytes = lastSizeBytes_;
+        const auto lastChangeAt = lastChangeAt_;
+        lock.unlock();
 
-    if (settings_.stallRuleEnabled && settings_.stallSeconds > 0 && hasLastSample_) {
-        if (result.stableSeconds >= settings_.stallSeconds) {
-            result.triggered = true;
-            result.triggerType = MonitorTriggerType::stall_timeout;
-            result.reason = LoadAppString(IDS_MONITOR_STALL_TRIGGER_REASON);
-            return result;
+        MonitorTickResult result;
+        bool nextHasLastSample = hasLastSample;
+        unsigned long long nextLastSizeBytes = lastSizeBytes;
+        auto nextLastChangeAt = lastChangeAt;
+
+        if (settings.enabled && !settings.path.empty()) {
+            std::error_code ec;
+            if (std::filesystem::exists(settings.path, ec) && std::filesystem::is_directory(settings.path, ec)) {
+                result.currentSizeBytes = CalculateFolderSize(settings.path);
+
+                const auto now = std::chrono::steady_clock::now();
+                if (!nextHasLastSample) {
+                    nextHasLastSample = true;
+                    nextLastSizeBytes = result.currentSizeBytes;
+                    nextLastChangeAt = now;
+                } else if (result.currentSizeBytes != nextLastSizeBytes) {
+                    nextLastSizeBytes = result.currentSizeBytes;
+                    nextLastChangeAt = now;
+                }
+
+                if (nextHasLastSample) {
+                    result.stableSeconds = static_cast<int>(
+                        std::chrono::duration_cast<std::chrono::seconds>(now - nextLastChangeAt).count());
+                    if (result.stableSeconds < 0) {
+                        result.stableSeconds = 0;
+                    }
+                }
+
+                if (settings.sizeRuleEnabled && settings.sizeThresholdBytes > 0 &&
+                    result.currentSizeBytes >= settings.sizeThresholdBytes) {
+                    result.triggered = true;
+                    result.triggerType = MonitorTriggerType::size_threshold;
+                    result.reason = LoadAppString(IDS_MONITOR_SIZE_TRIGGER_REASON);
+                } else if (settings.stallRuleEnabled && settings.stallSeconds > 0 && nextHasLastSample &&
+                           result.stableSeconds >= settings.stallSeconds) {
+                    result.triggered = true;
+                    result.triggerType = MonitorTriggerType::stall_timeout;
+                    result.reason = LoadAppString(IDS_MONITOR_STALL_TRIGGER_REASON);
+                }
+            }
         }
-    }
 
-    return result;
+        lock.lock();
+        if (stopWorker_) {
+            break;
+        }
+        hasLastSample_ = nextHasLastSample;
+        lastSizeBytes_ = nextLastSizeBytes;
+        lastChangeAt_ = nextLastChangeAt;
+        latestResult_ = result;
+    }
 }
 
 unsigned long long FolderMonitor::CalculateFolderSize(const std::wstring& folderPath) const {

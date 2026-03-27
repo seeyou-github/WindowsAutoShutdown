@@ -58,13 +58,25 @@ enum ControlId {
 };
 
 bool RunShutdownCommand(const wchar_t* args) {
-    std::wstring command = L"shutdown ";
-    command += args;
+    wchar_t systemDir[MAX_PATH] = {};
+    const UINT length = GetSystemDirectoryW(systemDir, ARRAYSIZE(systemDir));
+    if (length == 0 || length >= ARRAYSIZE(systemDir)) {
+        return false;
+    }
+
+    std::wstring application = systemDir;
+    application += L"\\shutdown.exe";
+
+    std::wstring commandLine = L"\"";
+    commandLine += application;
+    commandLine += L"\" ";
+    commandLine += args;
 
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
-    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+    if (!CreateProcessW(application.c_str(), commandLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                        nullptr, nullptr, &si, &pi)) {
         return false;
     }
     CloseHandle(pi.hThread);
@@ -157,8 +169,10 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
     wc.lpfnWndProc = MainWindow::WndProc;
     wc.hInstance = hInstance_;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
-    wc.hIconSm = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    hMainIconBig_ = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    hMainIconSmall_ = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    wc.hIcon = hMainIconBig_;
+    wc.hIconSm = hMainIconSmall_;
     wc.lpszClassName = kMainWndClass;
     RegisterClassExW(&wc);
 
@@ -170,10 +184,8 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
     if (!hwnd_) return false;
     SetWindowTextW(hwnd_, kMainWindowTitle);
 
-    HICON hMainIconBig = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
-    HICON hMainIconSmall = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
-    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hMainIconBig));
-    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hMainIconSmall));
+    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hMainIconBig_));
+    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hMainIconSmall_));
 
     RECT rc = {};
     GetWindowRect(hwnd_, &rc);
@@ -197,7 +209,9 @@ bool MainWindow::Create(HINSTANCE hInstance, int nCmdShow) {
     CreateMainControls();
     CreateSettingsWindow();
     InitTrayIcon();
-    reminder_.Create(hInstance_, hwnd_);
+    if (!reminder_.Create(hInstance_, hwnd_)) {
+        return false;
+    }
 
     EnableDarkTitleBar(hwnd_);
     ApplyTheme(hwnd_);
@@ -267,8 +281,10 @@ void MainWindow::CreateSettingsWindow() {
     wc.lpfnWndProc = MainWindow::SettingsWndProc;
     wc.hInstance = hInstance_;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
-    wc.hIconSm = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    hSettingsIconBig_ = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    hSettingsIconSmall_ = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    wc.hIcon = hSettingsIconBig_;
+    wc.hIconSm = hSettingsIconSmall_;
     wc.lpszClassName = kSettingsWndClass;
     RegisterClassExW(&wc);
 
@@ -279,10 +295,8 @@ void MainWindow::CreateSettingsWindow() {
         hwnd_, nullptr, hInstance_, this);
 
     if (settingsWnd_) {
-        HICON hSettingsIconBig = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
-        HICON hSettingsIconSmall = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
-        SendMessageW(settingsWnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hSettingsIconBig));
-        SendMessageW(settingsWnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hSettingsIconSmall));
+        SendMessageW(settingsWnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hSettingsIconBig_));
+        SendMessageW(settingsWnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hSettingsIconSmall_));
         CreateSettingsControls(settingsWnd_);
         EnableDarkTitleBar(settingsWnd_);
         ApplyTheme(settingsWnd_);
@@ -596,7 +610,8 @@ void MainWindow::InitTrayIcon() {
     trayData_.uID = 1;
     trayData_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     trayData_.uCallbackMessage = kTrayCallbackMessage;
-    trayData_.hIcon = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    hTrayIcon_ = LoadAppIcon(hInstance_, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    trayData_.hIcon = hTrayIcon_;
     lstrcpynW(trayData_.szTip, LoadAppString(IDS_APP_TITLE).c_str(), ARRAYSIZE(trayData_.szTip));
     Shell_NotifyIconW(NIM_ADD, &trayData_);
 }
@@ -910,6 +925,16 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         if (fontLarge_) DeleteObject(fontLarge_);
         if (bgBrush_) DeleteObject(bgBrush_);
         if (panelBrush_) DeleteObject(panelBrush_);
+        if (hMainIconBig_) DestroyIcon(hMainIconBig_);
+        if (hMainIconSmall_) DestroyIcon(hMainIconSmall_);
+        if (hSettingsIconBig_) DestroyIcon(hSettingsIconBig_);
+        if (hSettingsIconSmall_) DestroyIcon(hSettingsIconSmall_);
+        if (hTrayIcon_) DestroyIcon(hTrayIcon_);
+        hMainIconBig_ = nullptr;
+        hMainIconSmall_ = nullptr;
+        hSettingsIconBig_ = nullptr;
+        hSettingsIconSmall_ = nullptr;
+        hTrayIcon_ = nullptr;
         PostQuitMessage(0);
         return 0;
     default:

@@ -92,6 +92,11 @@ private:
     HFONT fontLarge_ = nullptr;
     HBRUSH bgBrush_ = nullptr;
     HBRUSH panelBrush_ = nullptr;
+    HICON hMainIconBig_ = nullptr;
+    HICON hMainIconSmall_ = nullptr;
+    HICON hSettingsIconBig_ = nullptr;
+    HICON hSettingsIconSmall_ = nullptr;
+    HICON hTrayIcon_ = nullptr;
 
     bool exiting_ = false;
     NOTIFYICONDATAW trayData_ = {};

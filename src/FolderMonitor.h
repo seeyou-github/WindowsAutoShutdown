@@ -1,7 +1,10 @@
 ﻿#pragma once
 
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
+#include <thread>
 
 enum class MonitorTriggerType {
     none,
@@ -28,15 +31,28 @@ struct MonitorTickResult {
 
 class FolderMonitor {
 public:
+    FolderMonitor();
+    ~FolderMonitor();
+
+    FolderMonitor(const FolderMonitor&) = delete;
+    FolderMonitor& operator=(const FolderMonitor&) = delete;
+
     void UpdateSettings(const MonitorSettings& settings);
     void ResetState();
     MonitorTickResult Tick();
 
 private:
+    void WorkerLoop();
     unsigned long long CalculateFolderSize(const std::wstring& folderPath) const;
 
+    mutable std::mutex mutex_;
+    std::condition_variable cv_;
+    std::thread worker_;
+    bool stopWorker_ = false;
+    bool settingsDirty_ = false;
     MonitorSettings settings_{};
     bool hasLastSample_ = false;
     unsigned long long lastSizeBytes_ = 0;
     std::chrono::steady_clock::time_point lastChangeAt_{};
+    MonitorTickResult latestResult_{};
 };

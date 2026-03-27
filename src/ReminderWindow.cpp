@@ -62,6 +62,7 @@ bool ReminderWindow::Create(HINSTANCE hInstance, HWND parent) {
                                   130, 170, 200, 42, hwnd_, reinterpret_cast<HMENU>(kCancelButtonId), hInstance, nullptr);
 
     if (!hLabel_ || !hCancelBtn_) {
+        Destroy();
         return false;
     }
 
@@ -72,9 +73,15 @@ bool ReminderWindow::Create(HINSTANCE hInstance, HWND parent) {
 
 void ReminderWindow::Destroy() {
     if (hwnd_) {
+        KillTimer(hwnd_, kReminderTimer);
+    }
+    if (hwnd_) {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
     }
+    hLabel_ = nullptr;
+    hCancelBtn_ = nullptr;
+    parent_ = nullptr;
     if (fontCountdown_) DeleteObject(fontCountdown_);
     if (fontButton_) DeleteObject(fontButton_);
     if (bgBrush_) DeleteObject(bgBrush_);
@@ -263,6 +270,11 @@ LRESULT ReminderWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_CLOSE:
+        return 0;
+    case WM_DESTROY:
+        KillTimer(hwnd_, kReminderTimer);
+        hLabel_ = nullptr;
+        hCancelBtn_ = nullptr;
         return 0;
     default:
         break;
